@@ -1,0 +1,50 @@
+ File  Edit  Search  Help         │  Sola  Scriptura  │         Version:    ESV
+────────────────┐                 └───────────────────┘
+ Matthew 1:1-39 │
+────────────────┴───────────────────────────────────────────────────────────────
+  1.    The book of the genealogy of Jesus Christ, the son of David, the son 
+     of Abraham.
+
+  2.    Etc...
+
+  3.    Etc...
+────────────────────────────────────────────────────────────────────────────────
+ [ Commands ] [   and   ] [ shortcuts ] [    go    ] [   here   ]
+
+
+-----
+
+Basic features:
+
+Load versions (perhaps with the Sword project?)
+Search
+Configurable verse/paragraph breaks, column width
+Save bookmarks (or remember last read?)
+
+
+Menus:
+
+File - Load
+File - Exit
+
+Edit - Settings...
+
+Search - Find...
+Search - Find next...
+Search - Search results...
+
+Help - Shortcuts
+Help - About
+
+
+Shortcuts:
+
+Next chapter
+Previous chapter
+Next book
+Previous book
+Select version
+Select passage
+Find
+Enable/disable verse breaks
+Enable/disable paragraph breaks
