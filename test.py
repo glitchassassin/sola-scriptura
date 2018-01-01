@@ -1,0 +1,3 @@
+import solascriptura
+
+solascriptura.test()
