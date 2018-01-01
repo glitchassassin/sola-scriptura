@@ -32,15 +32,24 @@ class Header(urwid.Columns):
 class Reader(urwid.Frame):
 	def __init__(self):
 		self.bible = Bible("ESV2011", "ESV2011.zip")
-		self.tab = urwid.Text(self.format_tab(" Lamentations 100:100 "))
-		self.text = self.bible.get(books=["John"], chapters=[1])
-		self.text_widget = urwid.Text(self.text)
-		self.scroller = urwid.ListBox(urwid.SimpleFocusListWalker([self.text_widget, urwid.Divider("─"), urwid.Text("[Next Chapter]")]))
+		self.tab = urwid.Text(self.format_tab(" Select Passage "))
+		self.text_widget = urwid.Text("")
+		self.go_to_passage("Matt", 1)
+		self.scroller = urwid.ListBox(urwid.SimpleFocusListWalker([self.text_widget, urwid.Divider("─"), urwid.Text("[End of Selection]", align="center")]))
 		
 		super(Reader, self).__init__(self.scroller, header=self.tab)
 
 	def format_tab(self, text):
 		return "┌" + text + "┐\n" + "┴" + "─"*len(text) + "┴" + "─"*(78-len(text))
+
+	def go_to_passage(self, books, chapters=None, verses=None):
+		self.text_widget.set_text(self.bible.get(books=books, chapters=chapters, verses=verses))
+		chapters = "" if chapters is None else chapters
+		verses = "" if verses is None else verses
+		tab_name = " {} {}{} ".format(", ".join(books) if not isinstance(books, str) else books, 
+									",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, str) else chapters, 
+									":" + ",".join(verses) if hasattr(verses, "__iter__") and not isinstance(verses, str) else verses)
+		self.tab.set_text(self.format_tab(tab_name))
 	
 class Footer(urwid.Pile):
 	def __init__(self):
