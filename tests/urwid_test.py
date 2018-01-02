@@ -3,6 +3,7 @@ import urwid
 def exit_on_q(key):
 	if key in ('q', 'Q'):
 		raise urwid.ExitMainLoop()
+	txt.set_text(repr(key))
 
 palette = [
    	('banner', 'black', 'light gray'),
