@@ -6,6 +6,7 @@ import urwid
 from .bible_handler import Bible
 from .custom_widgets import AlertPopup, QuestionBox
 from .config import Config
+from .module_handler import Library
 try:
 	basestring
 except:
@@ -19,12 +20,14 @@ class Controller(object):
 	def __init__(self):
 		self.handler = InputHandler()
 		self.config = Config()
+		self.library = Library()
 		# Create sections
 		self.header = Header()
-		self.reader = Reader(self.config, self.header.set_passage)
+		self.reader = Reader(self.config, self.header.set_version, self.header.set_passage)
 		last_passage = "{} {}{}".format(self.config.last_read["book"], 
 										self.config.last_read["chapter"], 
-										":" + self.config.last_read["verse"] if self.config.last_read["verse"] else "")
+										(":" + self.config.last_read["verse"]) if self.config.last_read["verse"] else "")
+		self.reader.set_bible(self.library.get_bible("KJV"))
 		self.reader.go_to_passage_string(last_passage)
 		self.body = urwid.Padding(self.reader, align="center", width=80) 
 		self.frame = urwid.Frame(self.body, header=self.header, footer=Footer())
@@ -40,6 +43,7 @@ class Controller(object):
 		self.handler.register(name="prev_chapter", action=self.reader.go_to_prev_chapter, key="left")
 		self.handler.register(name="toc", action=self.launch_toc, key="c")
 		self.handler.register(name="goto", action=self.launch_goto, key="g")
+		self.handler.register(name="version", action=self.launch_version, key="v")
 		self.handler.register(name="quit", action=self.quit, key="q")
 
 		# Define loop
@@ -51,45 +55,50 @@ class Controller(object):
 
 	def launch_toc(self):
 		self.loop.widget = TableOfContentsPopup(self.frame, self.reader, self.close_toc)
-
 	def close_toc(self):
 		self.loop.widget = self.frame
 
-	def quit(self):
-		raise urwid.ExitMainLoop()
+	def launch_version(self):
+		self.loop.widget = VersionPopup(self.frame, self.reader, self.library, self.close_version)
+	def close_version(self):
+		self.loop.widget = self.frame
 	
 	def launch_goto(self):
 		self.loop.widget = GoToPopup(self.frame, self.reader, self.close_goto)
-
 	def close_goto(self, error=None):
 		self.loop.widget = self.frame
-
 		if error:
 			self.launch_alert(error)
 	
 	def launch_alert(self, message):
 		self.loop.widget = AlertPopup(self.frame, message, self.close_alert)
-
 	def close_alert(self):
 		self.loop.widget = self.frame
+
+	def quit(self):
+		raise urwid.ExitMainLoop()
 
 class Header(urwid.Columns):
 	def __init__(self):
 		self.passage = urwid.Text(" Select Passage ")
 		self.heading = urwid.Text("│  Sola Scriptura  │\n└──────────────────┘", align="center")
-		self.version = urwid.Text("Version: ESV  ", align="right")
+		self.version = urwid.Text("Version: Select  ", align="right")
 		super(Header, self).__init__([self.passage, self.heading, self.version])
 
 	def set_passage(self, text):
 		self.passage.set_text(" {}".format(text))
 		#return "┌" + text + "┐\n" + "┴" + "─"*len(text) + "┴" + "─"*(78-len(text))
 
+	def set_version(self, text):
+		self.version.set_text("Version: {}  ".format(text))
+
 
 class Reader(urwid.ListBox):
-	def __init__(self, config, notify_current_passage):
+	def __init__(self, config, notify_current_version, notify_current_passage):
 		self.config = config
-		self.bible = Bible("ESV2011", "ESV2011.zip")
+		self.bible = None
 		self.current_passage = None
+		self.notify_current_version = notify_current_version
 		self.notify_current_passage = notify_current_passage
 		self.text_widget = urwid.Text("")
 		self.header = urwid.Text("")
@@ -105,7 +114,8 @@ class Reader(urwid.ListBox):
 		chapters = ",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, basestring) else chapters
 		verses = "" if verses is None else verses
 		verses = ",".join([str(v) for v in verses]) if hasattr(verses, "__iter__") and not isinstance(verses, basestring) else verses
-		passage_name = " {} {}:{} ".format(books, chapters, verses)
+		verses = ":" + verses if verses else verses
+		passage_name = " {} {}{} ".format(books, chapters, verses)
 		self.header.set_text(("title", passage_name))
 		self.config.last_read["book"] = books
 		self.config.last_read["chapter"] = chapters
@@ -167,6 +177,13 @@ class Reader(urwid.ListBox):
 					else:
 						return # At beginning - do nothing
 				previous_book = b
+	
+	def set_bible(self, bible):
+		self.bible = bible
+		self.notify_current_version(bible.name)
+		if self.current_passage:
+			books, chapters, verses = self.current_passage
+			self.go_to_passage(books=books, chapters=chapters, verses=verses)
 
 class TableOfContentsPopup(urwid.Overlay):
 	def __init__(self, backdrop, reader, callback):
@@ -235,26 +252,29 @@ class GoToPopup(urwid.Overlay):
 			raise
 
 class VersionPopup(urwid.Overlay):
-	def __init__(self, backdrop, reader, callback):
+	def __init__(self, backdrop, reader, library, callback):
 		self.reader = reader
+		self.library = library
 		self.callback = callback
 		self.selected = {}
 		# Create internal GUI elements
 		self.title = urwid.Text("Select version\n─────────────────", align="center")
-		book_list = self.reader.bible.get_books()
+		bible_list = self.library.list_bibles()
 		widgets = []
-		for t in book_list:
-			for b in book_list[t]:
-				button = urwid.Button(b.name)
-				urwid.connect_signal(button, "click", self.select_book, b)
-				widgets.append(button)
-			widgets.append(urwid.Divider())
+		for b in bible_list:
+			button = urwid.Button(b)
+			urwid.connect_signal(button, "click", self.select_bible, b)
+			widgets.append(button)
 		self.focus_list = urwid.SimpleFocusListWalker(widgets)
 		self.frame = urwid.Frame(urwid.ListBox(self.focus_list), header=self.title)
 		# Populate overlay
 		super(VersionPopup, self).__init__(urwid.LineBox(self.frame), backdrop,
 			align="center", width=25,
 			valign="middle", height=20)
+	
+	def select_bible(self, button, bible):
+		self.reader.set_bible(self.library.get_bible(bible))
+		return self.callback()
 
 class Footer(urwid.Pile):
 	def __init__(self):

@@ -1,15 +1,12 @@
-from pysword.modules import SwordModules
 from bs4 import BeautifulSoup
 import re
 
 class Bible(object):
-	def __init__(self, version="KJV", path=None):
-		self._modules = SwordModules(path)
-		found_modules = self._modules.parse_modules()
-		self._bible = self._modules.get_bible_from_module(version)
-		self._verse_spacing = False
-		self._paragraph_spacing = True
-	
+	def __init__(self, name, bible):
+		self._bible = bible
+		self.name = name
+		self.use_paragraphs = True
+
 	def get_books(self):
 		return self._bible.get_structure().get_books()
 
@@ -47,16 +44,18 @@ class Bible(object):
 				t.decompose()
 			# Eliminate section tags
 			for div in soup.findAll("div", {"type": "section"}):
-				#if self._paragraph_spacing:
+				#if self.use_paragraphs:
 					#n = "\n{}".format(n)
 				div.decompose()
 			# Eliminate paragraph tags (and create spacing)
 			for para in soup.findAll("div", {"type": "paragraph"}):
-				if "sid" in para.attrs and self._paragraph_spacing:
+				if "sid" in para.attrs and self.use_paragraphs:
 					#n = "\n\n   {}".format(n)
 					para.replaceWith("\n\n")
 				else:
 					para.decompose()
+			for m in soup.findAll("milestone", {"type": "x-p"}):
+				m.replaceWith("\n\n")
 			# Eliminate milestone tags
 			for div in soup.findAll("div", {"type": "x-milestone"}):
 				div.decompose()
@@ -89,6 +88,8 @@ class Bible(object):
 			for m in soup.findAll("milestone"):
 				if m["type"] == "cQuote":
 					m.replaceWith(m["marker"])
+			for t in soup.findAll("transchange"):
+				t.decompose()
 
 			if title is not None:
 				to_return.append(("title", "\n\n  {}\n".format(title)))
@@ -101,7 +102,7 @@ class Bible(object):
 				raise
 			n = results.group(1).replace(" ", "") + results.group(2) + results.group(3)[:max(len(results.group(3)) - len(n), 0)] + n
 			to_return.append(("note", n))
-			to_return.append(("text", "{}{}".format(verse_text, "\n" if self._verse_spacing else "")))
+			to_return.append(("text", "{}{}".format(verse_text, "\n" if not self.use_paragraphs else "")))
 
 		return to_return
 	
