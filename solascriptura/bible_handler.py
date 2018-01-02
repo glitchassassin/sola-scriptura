@@ -13,10 +13,20 @@ class Bible(object):
 	def get_books(self):
 		return self._bible.get_structure().get_books()
 
+	def get_canonical_name(self, book):
+		books = self.get_books()
+		for t in books:
+			for b in books[t]:
+				if b.name_matches(book):
+					return b.name
+		raise ValueError("{} does not match any books".format(book))
+
 	def get(self, books, chapters=None, verses=None):
 		xml = list(self._bible.get_iter(books, chapters, verses, clean=False))
 		if verses is None:
 			verses = range(1, len(xml)+1)
+		elif isinstance(verses, int):
+			verses = [verses]
 
 		to_return = []
 

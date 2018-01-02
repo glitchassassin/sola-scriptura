@@ -1,5 +1,6 @@
 # encoding: utf-8
 from __future__ import unicode_literals
+import re
 
 import urwid
 from .bible_handler import Bible
@@ -51,7 +52,19 @@ class Controller(object):
 		raise urwid.ExitMainLoop()
 	
 	def launch_goto(self):
-		pass
+		self.loop.widget = GoToPopup(self.frame, self.reader, self.close_goto)
+
+	def close_goto(self, error=None):
+		self.loop.widget = self.frame
+
+		if error:
+			self.launch_alert(error)
+	
+	def launch_alert(self, message):
+		self.loop.widget = AlertPopup(self.frame, message, self.close_alert)
+
+	def close_alert(self):
+		self.loop.widget = self.frame
 
 class Header(urwid.Columns):
 	def __init__(self):
@@ -83,9 +96,9 @@ class Reader(urwid.ListBox):
 		self.current_passage = (books, chapters, verses)
 		chapters = "" if chapters is None else chapters
 		verses = "" if verses is None else verses
-		passage_name = " {} {}{} ".format(  ", ".join(books) if not isinstance(books, basestring) else books, 
+		passage_name = " {} {}:{} ".format( self.bible.get_canonical_name(books), 
 											",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, basestring) else chapters, 
-											":" + ",".join(verses) if hasattr(verses, "__iter__") and not isinstance(verses, basestring) else verses)
+											",".join([str(v) for v in verses]) if hasattr(verses, "__iter__") and not isinstance(verses, basestring) else verses)
 		self.header.set_text(("title", passage_name))
 		self.notify_current_passage(passage_name)
 
@@ -165,6 +178,86 @@ class TableOfContents(urwid.Overlay):
 		# Skipping verse selection until we come up with a better control scheme
 		self.selected["verse"] = verse
 		self.callback()
+
+class GoToPopup(urwid.Overlay):
+	def __init__(self, backdrop, reader, callback):
+		self.reader = reader
+		self.callback = callback
+		# Create internal GUI elements
+		self.title = urwid.Text("Open passage:", align="center")
+		self.textbox = QuestionBox("> ", self.select_passage)
+		#urwid.connect_signal(self.textbox, "change", self.check_done)
+		#self.submit = urwid.Button("Go", on_press=self.select_passage)
+		self.frame = urwid.ListBox(urwid.SimpleFocusListWalker([self.title, self.textbox]))
+		# Populate overlay
+		super(GoToPopup, self).__init__(urwid.LineBox(self.frame), backdrop,
+			align="center", width=50,
+			valign="middle", height=5)
+	
+	def select_passage(self, passage):
+		if passage == "":
+			return self.callback() # Do nothing
+
+		regex = re.compile("(.*)? (\d+)(:?([0-9\-,]+))?")
+		results = regex.match(passage)
+		if results:
+			books = results.group(1)
+			chapters = int(results.group(2))
+			verses = results.group(4)
+			# Parse verses, e.g. John 3:14-17 or John 3:1,2,5
+			if verses and "," in verses:
+				verses = [int(x) for x in verses.split(",")]
+			elif verses and "-" in verses:
+				beginning, end = verses.split("-")
+				verses = range(int(beginning), int(end)+1)
+			elif verses:
+				verses = int(verses)
+			try:
+				self.reader.go_to_passage(books=books, chapters=chapters, verses=verses)
+				return self.callback()
+			except ValueError:
+				return self.callback("Invalid passage: {}".format(passage))
+				raise
+
+		self.callback("Invalid passage: {}".format(passage))
+
+class AlertPopup(urwid.Overlay):
+	def __init__(self, backdrop, message, callback):
+		self.callback = callback
+		self.title = urwid.Text(("title", "Alert"), align="center")
+		self.message = urwid.Text(message, align="center")
+		self.ok = urwid.Button("Ok", on_press=self.close)
+		self.ok = urwid.Padding(self.ok, align="center", width=("relative", 33))
+
+		self.frame = urwid.ListBox(urwid.SimpleFocusListWalker([self.title, urwid.Divider(), self.message, urwid.Divider(), self.ok]))
+
+		# Populate overlay
+		super(AlertPopup, self).__init__(urwid.LineBox(self.frame), backdrop,
+			align="center", width=50,
+			valign="middle", height=7)
+
+	def close(self, button):
+		self.callback()
+
+	def keypress(self, size, key):
+		if key == "esc":
+			self.callback()
+		else:
+			return super(AlertPopup, self).keypress(size, key)
+
+class QuestionBox(urwid.Edit):
+	def __init__(self, caption, callback):
+		self.callback = callback
+		super(QuestionBox, self).__init__(caption)
+
+	def keypress(self, size, key):
+		if key == "enter":
+			self.callback(self.get_edit_text())
+		elif key == "esc":
+			self.callback("")
+		else:
+			return super(QuestionBox, self).keypress(size, key)
+		
 
 class Footer(urwid.Pile):
 	def __init__(self):
