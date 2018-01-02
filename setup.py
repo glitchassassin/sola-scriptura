@@ -21,7 +21,7 @@ setup(  name="SolaScriptura",
         author_email="jon.winsley@gmail.com",
         license="MIT",
         packages=["solascriptura"],
-        install_requires=["urwid", "pysword"],
+        install_requires=["urwid", "pysword", "bs4"],
         entry_points={"console_scripts": ["solascriptura = solascriptura.main"]},
         zip_safe=False
 )

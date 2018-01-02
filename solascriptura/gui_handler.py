@@ -1,5 +1,12 @@
+# encoding: utf-8
+from __future__ import unicode_literals
+
 import urwid
 from .bible_handler import Bible
+try:
+	basestring
+except:
+	basestring = str
 
 def main():
 	c = Controller()
@@ -24,7 +31,8 @@ class Controller(object):
 		# Set up commands
 		self.handler.register(name="next_chapter", action=self.reader.go_to_next_chapter, key="right")
 		self.handler.register(name="prev_chapter", action=self.reader.go_to_prev_chapter, key="left")
-		self.handler.register(name="toc", action=self.launch_toc, key="g")
+		self.handler.register(name="toc", action=self.launch_toc, key="c")
+		self.handler.register(name="goto", action=self.launch_goto, key="g")
 		self.handler.register(name="quit", action=self.quit, key="q")
 
 		# Define loop
@@ -41,6 +49,9 @@ class Controller(object):
 
 	def quit(self):
 		raise urwid.ExitMainLoop()
+	
+	def launch_goto(self):
+		pass
 
 class Header(urwid.Columns):
 	def __init__(self):
@@ -72,9 +83,9 @@ class Reader(urwid.ListBox):
 		self.current_passage = (books, chapters, verses)
 		chapters = "" if chapters is None else chapters
 		verses = "" if verses is None else verses
-		passage_name = " {} {}{} ".format(  ", ".join(books) if not isinstance(books, str) else books, 
-											",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, str) else chapters, 
-											":" + ",".join(verses) if hasattr(verses, "__iter__") and not isinstance(verses, str) else verses)
+		passage_name = " {} {}{} ".format(  ", ".join(books) if not isinstance(books, basestring) else books, 
+											",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, basestring) else chapters, 
+											":" + ",".join(verses) if hasattr(verses, "__iter__") and not isinstance(verses, basestring) else verses)
 		self.header.set_text(("title", passage_name))
 		self.notify_current_passage(passage_name)
 
@@ -138,7 +149,7 @@ class TableOfContents(urwid.Overlay):
 	
 	def select_book(self, button, book):
 		self.selected["book"] = book
-		self.focus_list.clear()
+		del self.focus_list[:]
 		self.title.set_text("Select chapter\n─────────────────")
 		for c in range(1, book.num_chapters+1):
 			button = urwid.Button(str(c))
@@ -162,6 +173,7 @@ class Footer(urwid.Pile):
 			urwid.Text([("text", "Prev Chapter "), ("title", "[<-]  ")], align="center"),
 			urwid.Text([("text", "Switch Version "), ("title", "[v]  ")], align="center"),
 			urwid.Text([("text", "Go To... "), ("title", "[g]  ")], align="center"),
+			urwid.Text([("text", "Contents "), ("title", "[c]  ")], align="center"),
 			#urwid.Text([("text", "Find... "), ("title", "[f]  ")], align="center"),
 			urwid.Text([("text", "Next Chapter "), ("title", "[->]")], align="center"),
 		]
