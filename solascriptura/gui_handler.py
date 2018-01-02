@@ -4,6 +4,8 @@ import re
 
 import urwid
 from .bible_handler import Bible
+from .custom_widgets import AlertPopup, QuestionBox
+from .config import Config
 try:
 	basestring
 except:
@@ -16,10 +18,14 @@ def main():
 class Controller(object):
 	def __init__(self):
 		self.handler = InputHandler()
-		
+		self.config = Config()
 		# Create sections
 		self.header = Header()
-		self.reader = Reader(self.header.set_passage)
+		self.reader = Reader(self.config, self.header.set_passage)
+		last_passage = "{} {}{}".format(self.config.last_read["book"], 
+										self.config.last_read["chapter"], 
+										":" + self.config.last_read["verse"] if self.config.last_read["verse"] else "")
+		self.reader.go_to_passage_string(last_passage)
 		self.body = urwid.Padding(self.reader, align="center", width=80) 
 		self.frame = urwid.Frame(self.body, header=self.header, footer=Footer())
 
@@ -39,11 +45,12 @@ class Controller(object):
 		# Define loop
 		self.loop = urwid.MainLoop(self.frame, self.palettes, unhandled_input=self.handler.handle)
 
+
 	def run(self):
 		self.loop.run()
 
 	def launch_toc(self):
-		self.loop.widget = TableOfContents(self.frame, self.reader, self.close_toc)
+		self.loop.widget = TableOfContentsPopup(self.frame, self.reader, self.close_toc)
 
 	def close_toc(self):
 		self.loop.widget = self.frame
@@ -79,7 +86,8 @@ class Header(urwid.Columns):
 
 
 class Reader(urwid.ListBox):
-	def __init__(self, notify_current_passage):
+	def __init__(self, config, notify_current_passage):
+		self.config = config
 		self.bible = Bible("ESV2011", "ESV2011.zip")
 		self.current_passage = None
 		self.notify_current_passage = notify_current_passage
@@ -87,20 +95,42 @@ class Reader(urwid.ListBox):
 		self.header = urwid.Text("")
 		
 		super(Reader, self).__init__(urwid.SimpleFocusListWalker([self.header, self.text_widget, urwid.Divider("─")]))
-		
-		self.go_to_passage("Revelation of John", 22)
 
 	def go_to_passage(self, books, chapters=None, verses=None):
 		self.text_widget.set_text(self.bible.get(books=books, chapters=chapters, verses=verses))
 		self.set_focus(0)
 		self.current_passage = (books, chapters, verses)
+		books = self.bible.get_canonical_name(books)
 		chapters = "" if chapters is None else chapters
+		chapters = ",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, basestring) else chapters
 		verses = "" if verses is None else verses
-		passage_name = " {} {}:{} ".format( self.bible.get_canonical_name(books), 
-											",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, basestring) else chapters, 
-											",".join([str(v) for v in verses]) if hasattr(verses, "__iter__") and not isinstance(verses, basestring) else verses)
+		verses = ",".join([str(v) for v in verses]) if hasattr(verses, "__iter__") and not isinstance(verses, basestring) else verses
+		passage_name = " {} {}:{} ".format(books, chapters, verses)
 		self.header.set_text(("title", passage_name))
+		self.config.last_read["book"] = books
+		self.config.last_read["chapter"] = chapters
+		self.config.last_read["verse"] = verses
+		self.config.save_config()
+		
 		self.notify_current_passage(passage_name)
+
+	def go_to_passage_string(self, passage):
+		regex = re.compile("(.*)? (\d+)(:?([0-9\-,]+))?")
+		results = regex.match(passage)
+		if results:
+			books = results.group(1)
+			chapters = int(results.group(2))
+			verses = results.group(4)
+			# Parse verses, e.g. John 3:14-17 or John 3:1,2,5
+			if verses and "," in verses:
+				verses = [int(x) for x in verses.split(",")]
+			elif verses and "-" in verses:
+				beginning, end = verses.split("-")
+				verses = range(int(beginning), int(end)+1)
+			elif verses:
+				verses = int(verses)
+			return self.go_to_passage(books=books, chapters=chapters, verses=verses)
+		raise ValueError("Invalid passage: {}".format(passage))
 
 	def go_to_next_chapter(self):
 		# Check if the book has more chapters; if so, return the next chapter.
@@ -138,7 +168,7 @@ class Reader(urwid.ListBox):
 						return # At beginning - do nothing
 				previous_book = b
 
-class TableOfContents(urwid.Overlay):
+class TableOfContentsPopup(urwid.Overlay):
 	def __init__(self, backdrop, reader, callback):
 		self.reader = reader
 		self.callback = callback
@@ -156,7 +186,7 @@ class TableOfContents(urwid.Overlay):
 		self.focus_list = urwid.SimpleFocusListWalker(widgets)
 		self.frame = urwid.Frame(urwid.ListBox(self.focus_list), header=self.title)
 		# Populate overlay
-		super(TableOfContents, self).__init__(urwid.LineBox(self.frame), backdrop,
+		super(TableOfContentsPopup, self).__init__(urwid.LineBox(self.frame), backdrop,
 			align="center", width=25,
 			valign="middle", height=20)
 	
@@ -197,67 +227,34 @@ class GoToPopup(urwid.Overlay):
 	def select_passage(self, passage):
 		if passage == "":
 			return self.callback() # Do nothing
+		try:
+			self.reader.go_to_passage_string(passage)
+			return self.callback()
+		except ValueError:
+			return self.callback("Invalid passage: {}".format(passage))
+			raise
 
-		regex = re.compile("(.*)? (\d+)(:?([0-9\-,]+))?")
-		results = regex.match(passage)
-		if results:
-			books = results.group(1)
-			chapters = int(results.group(2))
-			verses = results.group(4)
-			# Parse verses, e.g. John 3:14-17 or John 3:1,2,5
-			if verses and "," in verses:
-				verses = [int(x) for x in verses.split(",")]
-			elif verses and "-" in verses:
-				beginning, end = verses.split("-")
-				verses = range(int(beginning), int(end)+1)
-			elif verses:
-				verses = int(verses)
-			try:
-				self.reader.go_to_passage(books=books, chapters=chapters, verses=verses)
-				return self.callback()
-			except ValueError:
-				return self.callback("Invalid passage: {}".format(passage))
-				raise
-
-		self.callback("Invalid passage: {}".format(passage))
-
-class AlertPopup(urwid.Overlay):
-	def __init__(self, backdrop, message, callback):
+class VersionPopup(urwid.Overlay):
+	def __init__(self, backdrop, reader, callback):
+		self.reader = reader
 		self.callback = callback
-		self.title = urwid.Text(("title", "Alert"), align="center")
-		self.message = urwid.Text(message, align="center")
-		self.ok = urwid.Button("Ok", on_press=self.close)
-		self.ok = urwid.Padding(self.ok, align="center", width=("relative", 33))
-
-		self.frame = urwid.ListBox(urwid.SimpleFocusListWalker([self.title, urwid.Divider(), self.message, urwid.Divider(), self.ok]))
-
+		self.selected = {}
+		# Create internal GUI elements
+		self.title = urwid.Text("Select version\n─────────────────", align="center")
+		book_list = self.reader.bible.get_books()
+		widgets = []
+		for t in book_list:
+			for b in book_list[t]:
+				button = urwid.Button(b.name)
+				urwid.connect_signal(button, "click", self.select_book, b)
+				widgets.append(button)
+			widgets.append(urwid.Divider())
+		self.focus_list = urwid.SimpleFocusListWalker(widgets)
+		self.frame = urwid.Frame(urwid.ListBox(self.focus_list), header=self.title)
 		# Populate overlay
-		super(AlertPopup, self).__init__(urwid.LineBox(self.frame), backdrop,
-			align="center", width=50,
-			valign="middle", height=7)
-
-	def close(self, button):
-		self.callback()
-
-	def keypress(self, size, key):
-		if key == "esc":
-			self.callback()
-		else:
-			return super(AlertPopup, self).keypress(size, key)
-
-class QuestionBox(urwid.Edit):
-	def __init__(self, caption, callback):
-		self.callback = callback
-		super(QuestionBox, self).__init__(caption)
-
-	def keypress(self, size, key):
-		if key == "enter":
-			self.callback(self.get_edit_text())
-		elif key == "esc":
-			self.callback("")
-		else:
-			return super(QuestionBox, self).keypress(size, key)
-		
+		super(VersionPopup, self).__init__(urwid.LineBox(self.frame), backdrop,
+			align="center", width=25,
+			valign="middle", height=20)
 
 class Footer(urwid.Pile):
 	def __init__(self):
