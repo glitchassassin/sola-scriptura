@@ -9,9 +9,6 @@ class Bible(object):
 		self._bible = self._modules.get_bible_from_module(version)
 		self._verse_spacing = False
 		self._paragraph_spacing = True
-
-	def normalize(self, books, chapters=None, verses=None):
-		_, book = self._bible.find_book(books)
 	
 	def get_books(self):
 		return self._bible.get_structure().get_books()
@@ -53,11 +50,18 @@ class Bible(object):
 			# Eliminate milestone tags
 			for div in soup.findAll("div", {"type": "x-milestone"}):
 				div.decompose()
+			# Eliminate chapter tags
 			for chapter in soup.findAll("chapter"):
 				chapter.decompose()
+			# Eliminate book tags
+			for div in soup.findAll("div", {"type": "book"}):
+				div.decompose()
 			# Parse quote marks
 			for q in soup.findAll("q"):
-				q.replaceWith(q.attrs["marker"])
+				if q["marker"] != "":
+					q.replaceWith(q["marker"])
+				else:
+					q.replaceWithChildren() # Words of Jesus are wrapped in <q> tags
 			# Parse indents
 			for l in soup.findAll("l"):
 				if "eid" in l.attrs:
@@ -82,7 +86,7 @@ class Bible(object):
 			results = verse_regex.match(str(soup))
 			try:
 				verse_text = results.group(4)
-			except:
+			except AttributeError:
 				print("\"" + str(soup).replace(" ", ".") + "\"")
 				raise
 			n = results.group(1).replace(" ", "") + results.group(2) + results.group(3)[:max(len(results.group(3)) - len(n), 0)] + n

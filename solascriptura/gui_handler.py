@@ -60,40 +60,59 @@ class Reader(urwid.ListBox):
 		self.current_passage = None
 		self.notify_current_passage = notify_current_passage
 		self.text_widget = urwid.Text("")
-		self.go_to_passage("Psalms", 1)
+		self.header = urwid.Text("")
 		
-		super(Reader, self).__init__(urwid.SimpleFocusListWalker([self.text_widget, urwid.Divider("─"), urwid.Text("[End of Selection]", align="center")]))
+		super(Reader, self).__init__(urwid.SimpleFocusListWalker([self.header, self.text_widget, urwid.Divider("─")]))
+		
+		self.go_to_passage("Revelation of John", 22)
 
 	def go_to_passage(self, books, chapters=None, verses=None):
 		self.text_widget.set_text(self.bible.get(books=books, chapters=chapters, verses=verses))
-		self.text_widget.set_focus()
+		self.set_focus(0)
 		self.current_passage = (books, chapters, verses)
 		chapters = "" if chapters is None else chapters
 		verses = "" if verses is None else verses
 		passage_name = " {} {}{} ".format(  ", ".join(books) if not isinstance(books, str) else books, 
 											",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, str) else chapters, 
 											":" + ",".join(verses) if hasattr(verses, "__iter__") and not isinstance(verses, str) else verses)
+		self.header.set_text(("title", passage_name))
 		self.notify_current_passage(passage_name)
 
 	def go_to_next_chapter(self):
-		# Try to get the next chapter
-		# If it fails, get the first chapter from the next book
-		# If that fails, alert user they are at the End
-		try:
-			book, chapter, verse = self.current_passage
-			self.go_to_passage(book, chapter+1, verse)
-		except:
-			raise
-	
+		# Check if the book has more chapters; if so, return the next chapter.
+		# If not, get the first chapter of the next book.
+		# If there is no next book, do nothing.
+		book, chapter, verse = self.current_passage
+		books = self.bible.get_books()
+		get_next_book = False
+		for t in books:
+			for b in books[t]:
+				if get_next_book:
+					return self.go_to_passage(b.name, 1)
+				if b.name_matches(book):
+					if chapter+1 <= b.num_chapters:
+						return self.go_to_passage(book, chapter+1)
+					else:
+						get_next_book = True
+		# Fail silently
+				
 	def go_to_prev_chapter(self):
-		# Try to get the previous chapter
-		# If that fails, get the last chapter from the previous book
-		# If that fails, alert user they are at the Beginning
-		try:
-			book, chapter, verse = self.current_passage
-			self.go_to_passage(book, chapter-1, verse)
-		except:
-			raise
+		# If there is a previous chapter in this book, return that.
+		# Otherwise, get the last chapter from the previous book
+		# If there is no previous book, do nothing.
+		book, chapter, verse = self.current_passage
+		if chapter > 1:
+			return self.go_to_passage(book, chapter-1)
+		books = self.bible.get_books()
+		previous_book = None
+		for t in books:
+			for b in books[t]:
+				if b.name_matches(book):
+					if previous_book is not None:
+						return self.go_to_passage(previous_book.name, previous_book.num_chapters)
+					else:
+						return # At beginning - do nothing
+				previous_book = b
 
 class TableOfContents(urwid.Overlay):
 	def __init__(self, backdrop, reader, callback):
@@ -101,7 +120,7 @@ class TableOfContents(urwid.Overlay):
 		self.callback = callback
 		self.selected = {}
 		# Create internal GUI elements
-		self.title = urwid.Text("Select book", align="center")
+		self.title = urwid.Text("Select book\n───────────────", align="center")
 		book_list = self.reader.bible.get_books()
 		widgets = []
 		for t in book_list:
@@ -114,13 +133,13 @@ class TableOfContents(urwid.Overlay):
 		self.frame = urwid.Frame(urwid.ListBox(self.focus_list), header=self.title)
 		# Populate overlay
 		super(TableOfContents, self).__init__(urwid.LineBox(self.frame), backdrop,
-			align="center", width=50,
-			valign="middle", height=10)
+			align="center", width=25,
+			valign="middle", height=20)
 	
 	def select_book(self, button, book):
 		self.selected["book"] = book
 		self.focus_list.clear()
-		self.title.set_text("Select chapter")
+		self.title.set_text("Select chapter\n─────────────────")
 		for c in range(1, book.num_chapters+1):
 			button = urwid.Button(str(c))
 			urwid.connect_signal(button, "click", self.select_chapter, c)
@@ -143,7 +162,7 @@ class Footer(urwid.Pile):
 			urwid.Text([("text", "Prev Chapter "), ("title", "[<-]  ")], align="center"),
 			urwid.Text([("text", "Switch Version "), ("title", "[v]  ")], align="center"),
 			urwid.Text([("text", "Go To... "), ("title", "[g]  ")], align="center"),
-			urwid.Text([("text", "Find... "), ("title", "[f]  ")], align="center"),
+			#urwid.Text([("text", "Find... "), ("title", "[f]  ")], align="center"),
 			urwid.Text([("text", "Next Chapter "), ("title", "[->]")], align="center"),
 		]
 		self.legend = urwid.Columns(legend_entries)
