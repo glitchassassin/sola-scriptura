@@ -1,3 +1,3 @@
 import solascriptura
 
-solascriptura.test()
+solascriptura.main()

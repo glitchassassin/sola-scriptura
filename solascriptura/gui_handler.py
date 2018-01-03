@@ -1,82 +1,20 @@
 # encoding: utf-8
 #from __future__ import unicode_literals
 import re
+import os
+import urllib2
 
 import urwid
-from .bible_handler import Bible
-from .custom_widgets import AlertPopup, QuestionBox
 from .config import Config
 from .module_handler import Library
+from .messages import NO_MODULES_DETECTED, SETUP
 try:
 	basestring
 except:
 	basestring = str
 
-def main():
-	c = Controller()
-	c.run()
 
-class Controller(object):
-	def __init__(self):
-		self.handler = InputHandler()
-		self.config = Config()
-		self.library = Library(self.config.modules["default_path"])
-		# Create sections
-		self.header = Header()
-		self.reader = Reader(self.config, self.header.set_version, self.header.set_passage)
-		last_passage = "{} {}{}".format(self.config.last_read["book"], 
-										self.config.last_read["chapter"], 
-										(":" + self.config.last_read["verse"]) if self.config.last_read["verse"] else "")
-		self.reader.set_bible(self.library.get_bible(self.config.last_read["version"]))
-		self.reader.go_to_passage_string(last_passage)
-		self.body = urwid.Padding(self.reader, align="center", width=80) 
-		self.frame = urwid.Frame(self.body, header=self.header, footer=Footer())
-
-		self.palettes = [
-			("text", "light gray", "black"),
-			("note", "dark gray", "black"),
-			("title", "white", "black"),
-		]
-
-		# Set up commands
-		self.handler.register(name="next_chapter", action=self.reader.go_to_next_chapter, key="right")
-		self.handler.register(name="prev_chapter", action=self.reader.go_to_prev_chapter, key="left")
-		self.handler.register(name="toc", action=self.launch_toc, key="c")
-		self.handler.register(name="goto", action=self.launch_goto, key="g")
-		self.handler.register(name="version", action=self.launch_version, key="v")
-		self.handler.register(name="quit", action=self.quit, key="q")
-
-		# Define loop
-		self.loop = urwid.MainLoop(self.frame, self.palettes, unhandled_input=self.handler.handle)
-
-
-	def run(self):
-		self.loop.run()
-
-	def launch_toc(self):
-		self.loop.widget = TableOfContentsPopup(self.frame, self.reader, self.close_toc)
-	def close_toc(self):
-		self.loop.widget = self.frame
-
-	def launch_version(self):
-		self.loop.widget = VersionPopup(self.frame, self.reader, self.library, self.close_version)
-	def close_version(self):
-		self.loop.widget = self.frame
-	
-	def launch_goto(self):
-		self.loop.widget = GoToPopup(self.frame, self.reader, self.close_goto)
-	def close_goto(self, error=None):
-		self.loop.widget = self.frame
-		if error:
-			self.launch_alert(error)
-	
-	def launch_alert(self, message):
-		self.loop.widget = AlertPopup(self.frame, message, self.close_alert)
-	def close_alert(self):
-		self.loop.widget = self.frame
-
-	def quit(self):
-		raise urwid.ExitMainLoop()
+## Main Widgets ##
 
 class Header(urwid.Columns):
 	def __init__(self):
@@ -100,12 +38,14 @@ class Reader(urwid.ListBox):
 		self.current_passage = None
 		self.notify_current_version = notify_current_version
 		self.notify_current_passage = notify_current_passage
-		self.text_widget = urwid.Text("")
-		self.header = urwid.Text("")
+		self.text_widget = urwid.Text(NO_MODULES_DETECTED.format(self.config.modules["default_path"]))
+		self.header = urwid.Text("No Modules Detected")
 		
 		super(Reader, self).__init__(urwid.SimpleFocusListWalker([self.header, self.text_widget, urwid.Divider("─")]))
 
 	def go_to_passage(self, books, chapters=None, verses=None):
+		if self.bible is None:
+			return # Do nothing
 		self.text_widget.set_text(self.bible.get(books=books, chapters=chapters, verses=verses))
 		self.set_focus(0)
 		self.current_passage = (books, chapters, verses)
@@ -125,6 +65,8 @@ class Reader(urwid.ListBox):
 		self.notify_current_passage(passage_name)
 
 	def go_to_passage_string(self, passage):
+		if self.bible is None:
+			return # Do nothing
 		regex = re.compile("(.*)? (\d+)(:?([0-9\-,]+))?")
 		results = regex.match(passage)
 		if results:
@@ -146,6 +88,8 @@ class Reader(urwid.ListBox):
 		# Check if the book has more chapters; if so, return the next chapter.
 		# If not, get the first chapter of the next book.
 		# If there is no next book, do nothing.
+		if self.bible is None:
+			return # Do nothing
 		book, chapter, verse = self.current_passage
 		books = self.bible.get_books()
 		get_next_book = False
@@ -164,6 +108,8 @@ class Reader(urwid.ListBox):
 		# If there is a previous chapter in this book, return that.
 		# Otherwise, get the last chapter from the previous book
 		# If there is no previous book, do nothing.
+		if self.bible is None:
+			return # Do nothing
 		book, chapter, verse = self.current_passage
 		if chapter > 1:
 			return self.go_to_passage(book, chapter-1)
@@ -179,6 +125,8 @@ class Reader(urwid.ListBox):
 				previous_book = b
 	
 	def set_bible(self, bible):
+		if bible is None:
+			return # Do nothing
 		self.bible = bible
 		self.notify_current_version(bible.name)
 		self.config.last_read["version"] = bible.name
@@ -187,6 +135,23 @@ class Reader(urwid.ListBox):
 			books, chapters, verses = self.current_passage
 			self.go_to_passage(books=books, chapters=chapters, verses=verses)
 
+
+class Footer(urwid.Pile):
+	def __init__(self):
+		self.divider = urwid.Divider("─")
+		legend_entries = [
+			urwid.Text([("text", "Prev Chapter "), ("title", "[<-]  ")], align="center"),
+			urwid.Text([("text", "Switch Version "), ("title", "[v]  ")], align="center"),
+			urwid.Text([("text", "Go To... "), ("title", "[g]  ")], align="center"),
+			urwid.Text([("text", "Contents "), ("title", "[c]  ")], align="center"),
+			#urwid.Text([("text", "Find... "), ("title", "[f]  ")], align="center"),
+			urwid.Text([("text", "Next Chapter "), ("title", "[->]")], align="center"),
+		]
+		self.legend = urwid.Columns(legend_entries)
+		super(Footer, self).__init__([self.divider, self.legend])
+
+## Popup Overlays ##
+
 class TableOfContentsPopup(urwid.Overlay):
 	def __init__(self, backdrop, reader, callback):
 		self.reader = reader
@@ -194,14 +159,16 @@ class TableOfContentsPopup(urwid.Overlay):
 		self.selected = {}
 		# Create internal GUI elements
 		self.title = urwid.Text("Select book\n───────────────", align="center")
-		book_list = self.reader.bible.get_books()
+
 		widgets = []
-		for t in book_list:
-			for b in book_list[t]:
-				button = urwid.Button(b.name)
-				urwid.connect_signal(button, "click", self.select_book, b)
-				widgets.append(button)
-			widgets.append(urwid.Divider())
+		if self.reader.bible is not None:
+			book_list = self.reader.bible.get_books()
+			for t in book_list:
+				for b in book_list[t]:
+					button = urwid.Button(b.name)
+					urwid.connect_signal(button, "click", self.select_book, b)
+					widgets.append(button)
+				widgets.append(urwid.Divider())
 		self.focus_list = urwid.SimpleFocusListWalker(widgets)
 		self.frame = urwid.Frame(urwid.ListBox(self.focus_list), header=self.title)
 		# Populate overlay
@@ -228,6 +195,13 @@ class TableOfContentsPopup(urwid.Overlay):
 		self.selected["verse"] = verse
 		self.callback()
 
+	def keypress(self, size, key):
+		if key == "esc":
+			self.callback()
+		else:
+			return super(TableOfContentsPopup, self).keypress(size, key)
+
+
 class GoToPopup(urwid.Overlay):
 	def __init__(self, backdrop, reader, callback):
 		self.reader = reader
@@ -252,6 +226,13 @@ class GoToPopup(urwid.Overlay):
 		except ValueError:
 			return self.callback("Invalid passage: {}".format(passage))
 			raise
+
+	def keypress(self, size, key):
+		if key == "esc":
+			self.callback()
+		else:
+			return super(GoToPopup, self).keypress(size, key)
+
 
 class VersionPopup(urwid.Overlay):
 	def __init__(self, backdrop, reader, library, callback):
@@ -278,42 +259,93 @@ class VersionPopup(urwid.Overlay):
 		self.reader.set_bible(self.library.get_bible(bible))
 		return self.callback()
 
-class Footer(urwid.Pile):
-	def __init__(self):
-		self.divider = urwid.Divider("─")
-		legend_entries = [
-			urwid.Text([("text", "Prev Chapter "), ("title", "[<-]  ")], align="center"),
-			urwid.Text([("text", "Switch Version "), ("title", "[v]  ")], align="center"),
-			urwid.Text([("text", "Go To... "), ("title", "[g]  ")], align="center"),
-			urwid.Text([("text", "Contents "), ("title", "[c]  ")], align="center"),
-			#urwid.Text([("text", "Find... "), ("title", "[f]  ")], align="center"),
-			urwid.Text([("text", "Next Chapter "), ("title", "[->]")], align="center"),
+	def keypress(self, size, key):
+		if key == "esc":
+			self.callback()
+		else:
+			return super(VersionPopup, self).keypress(size, key)
+
+
+class SetupPopup(urwid.Overlay):
+	def __init__(self, backdrop, module_path, callback):
+		self.module_path = module_path
+		self.callback = callback
+
+		# Create internal GUI elements
+		self.title = urwid.Text(("title", "Setup Wizard"), align="center")
+		self.instructions = urwid.Text(SETUP)
+		self.ok_button = urwid.Padding(urwid.Button("Ok", on_press=self.run_setup), align="center", width=("relative", 33))
+		self.cancel_button = urwid.Padding(urwid.Button("Cancel", on_press=self.close), align="center", width=("relative", 33))
+		#self.focus_list = urwid.Pile([self.instructions]) #
+		self.frame = urwid.Frame(urwid.Filler(urwid.Padding(self.instructions, align="center", left=1, right=1)), header=self.title, footer=urwid.Columns([self.ok_button, self.cancel_button]))
+		self.frame.focus_position = "footer"
+		# Populate overlay
+		super(SetupPopup, self).__init__(urwid.LineBox(self.frame), backdrop,
+			align="center", width=70,
+			valign="middle", height=14)
+
+	def keypress(self, size, key):
+		if key == "esc":
+			self.callback()
+		else:
+			return super(SetupPopup, self).keypress(size, key)
+	
+	def close(self, button):
+		self.callback()
+	
+	def run_setup(self, button):
+		# Sample modules to start with:
+		modules = [
+			"ftp://ftp.crosswire.org/pub/sword/packages/rawzip/ESV2011.zip",
+			"ftp://ftp.crosswire.org/pub/sword/packages/rawzip/KJV.zip",
+			"ftp://ftp.crosswire.org/pub/sword/packages/rawzip/TR.zip",
+			#"ftp://ftp.crosswire.org/pub/sword/packages/rawzip/SBLGNT.zip",
 		]
-		self.legend = urwid.Columns(legend_entries)
-		super(Footer, self).__init__([self.divider, self.legend])
 
-class InputHandler(object):
-	def __init__(self):
-		self.actions = {}
-		self.loop = None
+		self.instructions.set_text("Downloading modules...")
 
-	def handle(self, key):
-		for a in self.actions:
-			if key == self.actions[a]["key"]:
-				self.actions[a]["action"]()
-				return
-	
-	def register(self, name, action, key, modifiers=[]):
-		self.actions[name] = {
-			"key": key,
-			"modifiers": modifiers,
-			"action": action
-		}
-	def unregister(self, name):
-		del self.actions[name]
-	
-		
+		for module in modules:
+			resp = urllib2.urlopen(module)
+			with open(os.path.join(self.module_path, module.split("/")[-1]), "wb") as f:
+				f.write(resp.read())
+		self.callback("{} modules downloaded".format(len(modules)))
+
+## Building Blocks ##
+
+class AlertPopup(urwid.Overlay):
+	def __init__(self, backdrop, message, callback):
+		self.callback = callback
+		self.title = urwid.Text(("title", "Alert"), align="center")
+		self.message = urwid.Text(message, align="center")
+		self.ok = urwid.Button("Ok", on_press=self.close)
+		self.ok = urwid.Padding(self.ok, align="center", width=("relative", 33))
+
+		self.frame = urwid.ListBox(urwid.SimpleFocusListWalker([self.title, urwid.Divider(), self.message, urwid.Divider(), self.ok]))
+
+		# Populate overlay
+		super(AlertPopup, self).__init__(urwid.LineBox(self.frame), backdrop,
+			align="center", width=50,
+			valign="middle", height=7)
+
+	def close(self, button):
+		self.callback()
+
+	def keypress(self, size, key):
+		if key == "esc":
+			self.callback()
+		else:
+			return super(AlertPopup, self).keypress(size, key)
 
 
-if __name__ == "__main__":
-	main()
+class QuestionBox(urwid.Edit):
+	def __init__(self, caption, callback):
+		self.callback = callback
+		super(QuestionBox, self).__init__(caption)
+
+	def keypress(self, size, key):
+		if key == "enter":
+			self.callback(self.get_edit_text())
+		elif key == "esc":
+			self.callback("")
+		else:
+			return super(QuestionBox, self).keypress(size, key)

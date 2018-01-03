@@ -1,3 +1,4 @@
+import os
 from os.path import expanduser
 try:
 	import configparser
@@ -10,13 +11,13 @@ class Config(object):
 
 		# Default configuration options
 		self.last_read = {
-			"version": "KJV",
+			"version": "",
 			"book": "Matthew",
 			"chapter": "1",
 			"verse": ""
 		}
 		self.modules = {
-			"default_path": ""
+			"default_path": os.path.join(os.path.dirname(os.path.realpath(__file__)), "modules")
 		}
 
 		try:
@@ -31,8 +32,8 @@ class Config(object):
 		self.config.set("last_read", "book", self.last_read["book"])
 		self.config.set("last_read", "chapter", str(self.last_read["chapter"]))
 		self.config.set("last_read", "verse", str(self.last_read["verse"]))
-		self.config.add_section("versions")
-		self.config.set("versions", "default_path", self.modules["default_path"]) # If none, PySword will search the SWORD data path
+		self.config.add_section("modules")
+		self.config.set("modules", "default_path", self.modules["default_path"]) # If none, PySword will search the SWORD data path
 
 		with open(self.config_path, "w") as cfg:
 			self.config.write(cfg)
@@ -46,4 +47,4 @@ class Config(object):
 		self.last_read["chapter"] = self.config.getint("last_read", "chapter")
 		self.last_read["verse"] = (self.config.getint("last_read", "verse") or None)
 
-		self.modules["default_path"] = self.config.get("versions", "default_path")
+		self.modules["default_path"] = self.config.get("modules", "default_path")
