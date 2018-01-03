@@ -2,11 +2,13 @@
 #from __future__ import unicode_literals
 import re
 import os
-import urllib2
+try:
+	from urllib2 import urlopen
+except:
+	from urllib.request import urlopen
 
 import urwid
-from .config import Config
-from .module_handler import Library
+
 from .messages import NO_MODULES_DETECTED, SETUP
 try:
 	basestring
@@ -305,7 +307,7 @@ class SetupPopup(urwid.Overlay):
 		self.instructions.set_text("Downloading modules...")
 
 		for module in modules:
-			resp = urllib2.urlopen(module)
+			resp = urlopen(module)
 			with open(os.path.join(self.module_path, module.split("/")[-1]), "wb") as f:
 				f.write(resp.read())
 		self.callback("{} modules downloaded".format(len(modules)))
