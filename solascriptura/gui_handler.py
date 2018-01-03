@@ -1,5 +1,5 @@
 # encoding: utf-8
-from __future__ import unicode_literals
+#from __future__ import unicode_literals
 import re
 
 import urwid
@@ -20,14 +20,14 @@ class Controller(object):
 	def __init__(self):
 		self.handler = InputHandler()
 		self.config = Config()
-		self.library = Library()
+		self.library = Library(self.config.modules["default_path"])
 		# Create sections
 		self.header = Header()
 		self.reader = Reader(self.config, self.header.set_version, self.header.set_passage)
 		last_passage = "{} {}{}".format(self.config.last_read["book"], 
 										self.config.last_read["chapter"], 
 										(":" + self.config.last_read["verse"]) if self.config.last_read["verse"] else "")
-		self.reader.set_bible(self.library.get_bible("KJV"))
+		self.reader.set_bible(self.library.get_bible(self.config.last_read["version"]))
 		self.reader.go_to_passage_string(last_passage)
 		self.body = urwid.Padding(self.reader, align="center", width=80) 
 		self.frame = urwid.Frame(self.body, header=self.header, footer=Footer())
@@ -181,6 +181,8 @@ class Reader(urwid.ListBox):
 	def set_bible(self, bible):
 		self.bible = bible
 		self.notify_current_version(bible.name)
+		self.config.last_read["version"] = bible.name
+		self.config.save_config()
 		if self.current_passage:
 			books, chapters, verses = self.current_passage
 			self.go_to_passage(books=books, chapters=chapters, verses=verses)
@@ -259,7 +261,7 @@ class VersionPopup(urwid.Overlay):
 		self.selected = {}
 		# Create internal GUI elements
 		self.title = urwid.Text("Select version\n─────────────────", align="center")
-		bible_list = self.library.list_bibles()
+		bible_list = sorted(self.library.list_bibles())
 		widgets = []
 		for b in bible_list:
 			button = urwid.Button(b)
