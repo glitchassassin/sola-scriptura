@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(  name="SolaScriptura",
-        version="0.1",
+        version="0.1.1",
         description="A cross-platform interactive Bible reader for the terminal",
         long_description=readme(),
         classifiers=[
@@ -20,8 +20,8 @@ setup(  name="SolaScriptura",
         author="Jon Winsley",
         author_email="jon.winsley@gmail.com",
         license="MIT",
-        packages=["solascriptura"],
+        packages=["solascriptura", "solascriptura.modules"],
         install_requires=["urwid", "pysword", "bs4"],
-        entry_points={"console_scripts": ["solascriptura = solascriptura.main"]},
+        entry_points={"console_scripts": ["solascriptura = solascriptura:main"]},
         zip_safe=False
 )

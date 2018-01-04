@@ -3,6 +3,7 @@ import re
 
 from bs4 import BeautifulSoup
 from pysword.modules import SwordModules
+from . import modules
 
 class Library(object):
 	def __init__(self, library_path):
