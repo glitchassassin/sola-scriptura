@@ -47,8 +47,8 @@ class Bible(object):
 					return b.name
 		raise ValueError("{} does not match any books".format(book))
 
-	def get(self, books, chapters=None, verses=None):
-		xml = list(self._bible.get_iter(books, chapters, verses, clean=False))
+	def get(self, book, chapters=None, verses=None):
+		xml = list(self._bible.get_iter(book, chapters, verses, clean=False))
 		if verses is None:
 			verses = range(1, len(xml)+1)
 		elif isinstance(verses, int):

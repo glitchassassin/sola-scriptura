@@ -45,21 +45,29 @@ class Reader(urwid.ListBox):
 		
 		super(Reader, self).__init__(urwid.SimpleFocusListWalker([self.header, self.text_widget, urwid.Divider("─")]))
 
-	def go_to_passage(self, books, chapters=None, verses=None):
+	def go_to_passage(self, book=None, chapters=None, verses=None):
 		if self.bible is None:
 			return # Do nothing
-		self.text_widget.set_text(self.bible.get(books=books, chapters=chapters, verses=verses))
+		
+		try:
+			self.text_widget.set_text(self.bible.get(book=book, chapters=chapters, verses=verses))
+		except ValueError:
+			books = self.bible.get_books()
+			for t in books:
+				for b in books[t]:
+					return self.go_to_passage(book=b.name, chapters=1)
+
 		self.set_focus(0)
-		self.current_passage = (books, chapters, verses)
-		books = self.bible.get_canonical_name(books)
+		self.current_passage = (book, chapters, verses)
+		book = self.bible.get_canonical_name(book)
 		chapters = "" if chapters is None else chapters
 		chapters = ",".join(chapters) if hasattr(chapters, "__iter__") and not isinstance(chapters, basestring) else chapters
 		verses = "" if verses is None else verses
 		verses = ",".join([str(v) for v in verses]) if hasattr(verses, "__iter__") and not isinstance(verses, basestring) else verses
 		verses = ":" + verses if verses else verses
-		passage_name = " {} {}{} ".format(books, chapters, verses)
+		passage_name = " {} {}{} ".format(book, chapters, verses)
 		self.header.set_text(("title", passage_name))
-		self.config.last_read["book"] = books
+		self.config.last_read["book"] = book
 		self.config.last_read["chapter"] = chapters
 		self.config.last_read["verse"] = verses
 		self.config.save_config()
@@ -72,7 +80,7 @@ class Reader(urwid.ListBox):
 		regex = re.compile("(.*)? (\d+)(:?([0-9\-,]+))?")
 		results = regex.match(passage)
 		if results:
-			books = results.group(1)
+			book = results.group(1)
 			chapters = int(results.group(2))
 			verses = results.group(4)
 			# Parse verses, e.g. John 3:14-17 or John 3:1,2,5
@@ -83,7 +91,7 @@ class Reader(urwid.ListBox):
 				verses = range(int(beginning), int(end)+1)
 			elif verses:
 				verses = int(verses)
-			return self.go_to_passage(books=books, chapters=chapters, verses=verses)
+			return self.go_to_passage(book=book, chapters=chapters, verses=verses)
 		raise ValueError("Invalid passage: {}".format(passage))
 
 	def go_to_next_chapter(self):
@@ -134,9 +142,9 @@ class Reader(urwid.ListBox):
 		self.config.last_read["version"] = bible.name
 		self.config.save_config()
 		if self.current_passage:
-			books, chapters, verses = self.current_passage
-			self.go_to_passage(books=books, chapters=chapters, verses=verses)
-
+			book, chapters, verses = self.current_passage
+			self.go_to_passage(book=book, chapters=chapters, verses=verses)
+				
 
 class Footer(urwid.Pile):
 	def __init__(self):
@@ -189,7 +197,7 @@ class TableOfContentsPopup(urwid.Overlay):
 	
 	def select_chapter(self, button, chapter):
 		self.selected["chapter"] = chapter
-		self.reader.go_to_passage(books=self.selected["book"].name, chapters=chapter)
+		self.reader.go_to_passage(book=self.selected["book"].name, chapters=chapter)
 		self.callback()
 
 	def select_verse(self, button, verse):
