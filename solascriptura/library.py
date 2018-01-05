@@ -119,6 +119,8 @@ class Bible(object):
 					m.replaceWith(m["marker"])
 			for t in soup.findAll("transchange"):
 				t.decompose()
+			for f in soup.findAll("foreign"):
+				f.replaceWithChildren()
 
 			if title is not None:
 				to_return.append(("title", "\n\n  {}\n".format(title)))
