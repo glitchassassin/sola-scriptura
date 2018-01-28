@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(  name="SolaScriptura",
-        version="0.1.1",
+        version="0.1.2",
         description="A cross-platform interactive Bible reader for the terminal",
         long_description=readme(),
         classifiers=[
