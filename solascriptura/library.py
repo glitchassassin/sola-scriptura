@@ -53,7 +53,7 @@ class Bible(object):
 			verses = range(1, len(xml)+1)
 		elif isinstance(verses, int):
 			verses = [verses]
-
+		#return str(xml)
 		to_return = []
 
 		for v, n in zip(xml, verses):
@@ -118,7 +118,7 @@ class Bible(object):
 				if m["type"] == "cQuote":
 					m.replaceWith(m["marker"])
 			for t in soup.findAll("transchange"):
-				t.decompose()
+				t.replaceWithChildren()
 			for f in soup.findAll("foreign"):
 				f.replaceWithChildren()
 
